@@ -1,3 +1,4 @@
+require('./flatmap');
 const commandLineArgs = require('command-line-args');
 const path = require('path')
 const fs = require('fs');
@@ -27,12 +28,56 @@ console.log('From language:', from);
 console.log('To language:', to);
 
 const allInputAsText = fs.readFileSync(input).toString();
-
-const allEntriesAsText = allInputAsText.split('\n\n').filter(x => x);
-
+const allEntriesAsText = allInputAsText.split(/\r?\n\r?\n/).filter(x => x);
 const allEntries = allEntriesAsText.map(e => new Entry(e));
 
-console.log(allEntries);
+const amtOfLines = Math.max(...allEntries.map(e => e.lines.length));
+const maxLineLength = Math.max(...allEntries.flatMap(e => e.lines.map(l => l.length)));
+
+console.log('Entries: ', allEntries.length);
+console.log('Lines per entry: ', amtOfLines);
+console.log('Max length of line: ', maxLineLength);
+
+let currentSentence = '';
+let currentTimestamps = [];
+
+const results = [];
+
+for (let currentEntry of allEntries) {
+  const newSentences = currentEntry.total.match(/[^\.!\?]+[\.!\?]+/g);
+  let rest = '';
+
+  if (newSentences) {
+    // We got one or more new sentences here
+    const sentences = [...newSentences];
+
+    // Append any leftovers from previous ones
+    if (currentSentence) {
+      sentences[0] = currentSentence += (' ' + sentences[0]);
+      currentSentence = '';
+    }
+    
+    for (let sentence of sentences) {
+      results.push({ sentence, ts: [...currentTimestamps, currentEntry.ts] });
+      currentTimestamps = [];
+    }
+
+    rest = currentEntry.total.replace(newSentences.join(''), '');
+  } else {
+    // No finished sentences here
+    currentTimestamps.push(currentEntry.ts)
+    rest = currentEntry.total;
+  }
+
+  currentSentence = currentSentence + rest;
+}
+
+// In case the thing doesn't end in a sentence, push the rest
+if (currentSentence) {
+  results.push({ currentSentence, ts: [...currentTimestamps] });
+}
+
+console.log(results);
 
 function getSrtFileInFolder() {
   const files = fs.readdirSync('.');
