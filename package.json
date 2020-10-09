@@ -14,5 +14,9 @@
     "subtitles"
   ],
   "author": "Vincent Sels",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "@types/node": "^14.11.8",
+    "command-line-args": "^5.1.1"
+  }
 }
