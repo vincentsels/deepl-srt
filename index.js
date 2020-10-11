@@ -27,7 +27,7 @@ const options = commandLineArgs(optionDefinitions);
 const key = options.key || env.DEEPL_API_KEY;
 const input = options.input || getSrtFileInFolder();
 let output = options.output;
-const source = options.from || 'NL';
+const source = options.from;
 const target = options.to || 'FR';
 const formality = options.formal ? 'more' : 'less';
 const logDebug = options.debug;
@@ -40,7 +40,7 @@ if (!output) output = input.split('.').slice(0, -1).join('.') + '.' + target.toL
 
 log('Input file:', input);
 log('Output file:', output);
-log('Source language:', source);
+log('Source language:', source || 'Auto detect');
 log('Target language:', target);
 log('Formality:', formality);
 log('Show debug:', logDebug);
@@ -114,8 +114,8 @@ debug(results);
 
 const params = new URLSearchParams();
 params.append('auth_key', key);
+if (source) params.append('source_lang', source);
 params.append('target_lang', target);
-params.append('source_lang', source);
 params.append('split_sentences', 0);
 params.append('formality', formality);
 const sentencesToTranslate = results.forEach(r => {
