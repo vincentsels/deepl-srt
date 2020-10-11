@@ -59,10 +59,12 @@ let currentTimestamps = [];
 const results = [];
 
 for (let currentEntry of allEntries) {
+  debug('Treating entry', currentEntry);
   const newSentences = currentEntry.total.match(/[^\.!\?]+[\.!\?]+/g);
   let rest = '';
 
   if (newSentences) {
+    debug('New sentences', newSentences);
     // We got one or more new sentences here
     const sentences = [...newSentences];
 
@@ -70,26 +72,33 @@ for (let currentEntry of allEntries) {
     if (currentSentence) {
       sentences[0] = currentSentence += (' ' + sentences[0]);
       currentSentence = '';
+      debug('Added leftover from previous sentence to first new sentence', sentences[0]);
     }
     
     for (let sentence of sentences) {
       results.push({ sentence, ts: [...currentTimestamps, currentEntry.ts] });
+      debug('Added sentence', sentence, 'with timestamps', [...currentTimestamps, currentEntry.ts]);
       currentTimestamps = [];
     }
 
     rest = currentEntry.total.replace(newSentences.join(''), '');
   } else {
     // No finished sentences here
-    currentTimestamps.push(currentEntry.ts)
     rest = currentEntry.total;
+    debug('No new sentences, just add rest', currentEntry.total);
   }
 
   currentSentence = currentSentence ? (currentSentence + ' ' + rest) : rest;
+  if (rest) {
+    currentTimestamps.push(currentEntry.ts);
+    debug('Set currentSentence', currentSentence, 'with ts', currentEntry.ts);
+  }
 }
 
 // In case the thing doesn't end in a sentence, push the rest
 if (currentSentence) {
   results.push({ sentence: currentSentence, ts: [...currentTimestamps] });
+  debug('Pushed remainder', currentSentence, 'with ts', [...currentTimestamps]);
 }
 
 debug(results);
