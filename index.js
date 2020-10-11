@@ -154,8 +154,8 @@ axios.default.post(DEEPL_API_URL + 'translate', params.toString())
         if (lastTs > ts) {
           debug('Already at', lastTs, 'continueing there, still in overflow mode');
           ts = lastTs;
-        } else {
-          debug('Caught up, DISABLED overflow mode');
+        } else if (overflow) {
+          debug('DISABLED overflow mode, caught up');
           overflow = false;
         }
         const words = trans.split(' ');
@@ -167,17 +167,20 @@ axios.default.post(DEEPL_API_URL + 'translate', params.toString())
             && (targetEntry.lines[amtOfLines - 1].length + word.length + 1 > maxLineLength
               || (!overflow && wordcount(targetEntry.lines.join(' ')) >= targetEntry.wordCount))) {
             // Entry full, go to the next one
-            debug('Entry', targetEntry.lineNumber, 'contains more than its', targetEntry.wordCount, 'words, go to next one');
+            debug('Entry', targetEntry.lineNumber, 'contains more than its', targetEntry.wordCount, 'words, go to next one.');
             targetEntry = targetEntries.find(e => e.ts > targetEntry.ts);
+            if (!overflow) {
+              overflow = true;
+              debug('ENABLED overflow mode');
+            }
             if (targetEntry === undefined) {
               // We're at the last one - just keep appending to it...
               debug('Entries full, appending to last one...');
               endOfFile = true;
-              targetEntry = targetEntries.find(e => e.ts >= ts);
+              targetEntry = targetEntries[targetEntries.length -1];
             } else {
-              debug('Entry', targetEntry.lineNumber, 'selected; ENABLED overflow mode');
+              debug('Entry', targetEntry.lineNumber, 'selected');
               lastTs = targetEntry.ts; // Prevent going back to the previous one
-              overflow = true;
             }
           }
 
