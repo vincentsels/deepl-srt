@@ -7,6 +7,8 @@ const axios = require('axios');
 var wordcount = require('wordcount');
 const { env } = require('process');
 
+const DEEPL_API_URL = 'https://api.deepl.com/v2/';
+
 const optionDefinitions = [
   { name: 'input', alias: 'i', type: String },
   { name: 'output', alias: 'o', type: String },
@@ -17,6 +19,7 @@ const optionDefinitions = [
   { name: 'debug', alias: 'd', type: Boolean },
   { name: 'lines', alias: 'l', type: Number },
   { name: 'maxlength', alias: 'm', type: Number },
+  { name: 'usagelimit', alias: 'u', type: Boolean },
 ];
 
 const options = commandLineArgs(optionDefinitions);
@@ -28,6 +31,7 @@ const source = options.from || 'NL';
 const target = options.to || 'FR';
 const formality = options.formal ? 'more' : 'less';
 const logDebug = options.debug;
+const displayUsageLimit = options.usagelimit;
 
 if (!key) throw new Error('Specify a DeepL API key as DEEPL_API_KEY environment variable, or using the --key or -k parameter.')
 if (!input) throw new Error('At least specify input file with --input or -i.');
@@ -39,6 +43,7 @@ log('Output file:', output);
 log('Source language:', source);
 log('Target language:', target);
 log('Formality:', formality);
+log('Show debug:', logDebug);
 
 const allInputAsText = fs.readFileSync(input).toString();
 
@@ -119,7 +124,7 @@ const sentencesToTranslate = results.forEach(r => {
 
 log('Translating...');
 
-axios.default.post('https://api.deepl.com/v2/translate', params.toString())
+axios.default.post(DEEPL_API_URL + 'translate', params.toString())
   .then((response) => {
     if (response.status !== 200) {
       console.error('Request to DeepL failed', response);
@@ -140,10 +145,19 @@ axios.default.post('https://api.deepl.com/v2/translate', params.toString())
         return trans;
       });
 
+      let endOfFile = false;
+      let lastTs = null;
       let overflow = false;
 
       translations.forEach((trans, i) => {
-        const ts = results[i].ts[0];
+        let ts = results[i].ts[0];
+        if (lastTs > ts) {
+          debug('Already at', lastTs, 'continueing there, still in overflow mode');
+          ts = lastTs;
+        } else {
+          debug('Caught up, DISABLED overflow mode');
+          overflow = false;
+        }
         const words = trans.split(' ');
 
         let targetEntry = targetEntries.find(e => e.ts >= ts);
@@ -151,17 +165,19 @@ axios.default.post('https://api.deepl.com/v2/translate', params.toString())
         for (let word of words) {
           if (targetEntry.lines.length === amtOfLines
             && (targetEntry.lines[amtOfLines - 1].length + word.length + 1 > maxLineLength
-              || wordcount(targetEntry.lines.join(' ')) >= targetEntry.wordCount)) {
+              || (!overflow && wordcount(targetEntry.lines.join(' ')) >= targetEntry.wordCount))) {
             // Entry full, go to the next one
             debug('Entry', targetEntry.lineNumber, 'contains more than its', targetEntry.wordCount, 'words, go to next one');
             targetEntry = targetEntries.find(e => e.ts > targetEntry.ts);
             if (targetEntry === undefined) {
               // We're at the last one - just keep appending to it...
               debug('Entries full, appending to last one...');
-              overflow = true;
+              endOfFile = true;
               targetEntry = targetEntries.find(e => e.ts >= ts);
             } else {
-              debug('Entry', targetEntry.lineNumber, 'selected');
+              debug('Entry', targetEntry.lineNumber, 'selected; ENABLED overflow mode');
+              lastTs = targetEntry.ts; // Prevent going back to the previous one
+              overflow = true;
             }
           }
 
@@ -169,7 +185,7 @@ axios.default.post('https://api.deepl.com/v2/translate', params.toString())
             // First word in this entry
             debug('Adding first word', word, 'to', targetEntry.lineNumber);
             targetEntry.lines.push(word);
-          } else if ((overflow || targetEntry.lines.length < amtOfLines)
+          } else if ((endOfFile || targetEntry.lines.length < amtOfLines)
             && targetEntry.lines[targetEntry.lines.length - 1].length + word.length + 1 > maxLineLength) {
             // Line in entry full, but place for a new one... Add new line in this entry
             debug('Adding first word', word, 'to new line of', targetEntry.lineNumber);
@@ -185,6 +201,22 @@ axios.default.post('https://api.deepl.com/v2/translate', params.toString())
       log('Done, writing file...');
       fs.writeFileSync(output, targetEntries.reduce((p, c) => p + c.toText(), ''));
       log('Finished.');
+
+      if (displayUsageLimit) {
+        log('Requesting usage limit...');
+        axios.default.get(DEEPL_API_URL + 'usage', {params: { 'auth_key': key }})
+        .then((response) => {
+          if (response.status !== 200) {
+            console.error('Request to DeepL failed', response);
+          } else {
+            log('Usage:', response.data.character_count + '/' + response.data.character_limit,
+              Math.round(response.data.character_count / response.data.character_limit * 100) + '%');
+          }
+        }).catch((err) => { 
+          console.error('Error retrieving usage limit', err);
+          throw new Error(err);
+        });
+      }
     }
   })
   .catch((err) => { 
