@@ -1,5 +1,3 @@
-var wordcount = require('wordcount');
-
 class Entry {
   constructor(text) {
     if (!text) return;
@@ -8,7 +6,7 @@ class Entry {
     this.ts = entryLines[1];
     this.lines = entryLines.slice(2);
     this.total = this.lines.join(' ');
-    this.wordCount = wordcount(this.total);
+    this.characterCount = this.total.length;
   }
 
   toText() {

@@ -4,7 +4,6 @@ const path = require('path')
 const fs = require('fs');
 const Entry = require('./entry');
 const axios = require('axios');
-var wordcount = require('wordcount');
 const { env } = require('process');
 
 const DEEPL_API_URL = 'https://api.deepl.com/v2/';
@@ -55,12 +54,12 @@ const allEntries = allEntriesAsText.map(e => new Entry(e));
 const amtOfLines = options.lines || Math.max(...allEntries.map(e => e.lines.length));
 const maxLineLength = options.maxlength || Math.max(...allEntries.flatMap(e => e.lines.map(l => l.length)));
 
-const sourceWordCount = wordcount(allEntries.flatMap(e => e.lines).join(' '));
+const sourceCharacterCount = allEntries.flatMap(e => e.lines.map(l => l.length)).reduce((a, b) => a + b, 0);
 
 log('Entries:', allEntries.length);
 log('Lines per entry:', amtOfLines);
 log('Max length of line:', maxLineLength);
-log('Source word count:', sourceWordCount);
+log('Source character count:', sourceCharacterCount);
 
 let currentSentence = '';
 let currentTimestamps = [];
@@ -132,16 +131,16 @@ axios.default.post(DEEPL_API_URL + 'translate', params.toString())
     } else {
       const translations = response.data.translations.map(t => t.text);
       debug(translations);
-      const targetWordCount = wordcount(translations.join(' '));
-      const lengthFactor = targetWordCount / sourceWordCount;
-      log('Target word count:', targetWordCount, 'factor:', lengthFactor);
+      const targetCharacterCount = translations.map(t => t.length).reduce((a, b) => a + b, 0);
+      const lengthFactor = targetCharacterCount / sourceCharacterCount;
+      log('Target character count:', targetCharacterCount, 'factor:', lengthFactor);
 
       const targetEntries = allEntries.map((e) => {
         const trans = new Entry();
         trans.lineNumber = e.lineNumber;
         trans.lines = [];
         trans.ts = e.ts;
-        trans.wordCount = Math.ceil(e.wordCount * lengthFactor);
+        trans.characterCount = Math.ceil(e.characterCount * lengthFactor);
         return trans;
       });
 
@@ -154,10 +153,12 @@ axios.default.post(DEEPL_API_URL + 'translate', params.toString())
         if (lastTs > ts) {
           debug('Already at', lastTs, 'continueing there, still in overflow mode');
           ts = lastTs;
-        } else if (overflow) {
-          debug('DISABLED overflow mode, caught up');
+        }
+        if (overflow) {
+          debug('DISABLED overflow mode');
           overflow = false;
         }
+
         const words = trans.split(' ');
 
         let targetEntry = targetEntries.find(e => e.ts >= ts);
@@ -165,9 +166,9 @@ axios.default.post(DEEPL_API_URL + 'translate', params.toString())
         for (let word of words) {
           if (targetEntry.lines.length === amtOfLines
             && (targetEntry.lines[amtOfLines - 1].length + word.length + 1 > maxLineLength
-              || (!overflow && wordcount(targetEntry.lines.join(' ')) >= targetEntry.wordCount))) {
+              || (!overflow && (targetEntry.lines[amtOfLines - 1].length + word.length + 1) >= (targetEntry.characterCount / amtOfLines)))) {
             // Entry full, go to the next one
-            debug('Entry', targetEntry.lineNumber, 'contains more than its', targetEntry.wordCount, 'words, go to next one.');
+            debug('Entry', targetEntry.lineNumber, 'full, go to next one.');
             targetEntry = targetEntries.find(e => e.ts > targetEntry.ts);
             if (!overflow) {
               overflow = true;
@@ -189,7 +190,8 @@ axios.default.post(DEEPL_API_URL + 'translate', params.toString())
             debug('Adding first word', word, 'to', targetEntry.lineNumber);
             targetEntry.lines.push(word);
           } else if ((endOfFile || targetEntry.lines.length < amtOfLines)
-            && targetEntry.lines[targetEntry.lines.length - 1].length + word.length + 1 > maxLineLength) {
+            && targetEntry.lines[targetEntry.lines.length - 1].length + word.length + 1 > maxLineLength
+            || (!overflow && (targetEntry.lines[targetEntry.lines.length - 1].length + word.length + 1) >= (targetEntry.characterCount / amtOfLines))) {
             // Line in entry full, but place for a new one... Add new line in this entry
             debug('Adding first word', word, 'to new line of', targetEntry.lineNumber);
             targetEntry.lines.push(word);
