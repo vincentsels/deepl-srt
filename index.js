@@ -62,50 +62,52 @@ log('Max length of line:', maxLineLength);
 log('Source character count:', sourceCharacterCount);
 
 let currentSentence = '';
-let currentTimestamps = [];
+let currentTimestamp = '';
 
 const results = [];
 
 for (let currentEntry of allEntries) {
-  // debug('Treating entry', currentEntry);
-  const newSentences = currentEntry.total.match(/[^\.!\?]+[\.!\?]+/g);
-  let rest = '';
+  for (let lineNumber in currentEntry.lines) {
+    const line = `<${currentEntry.number}-${lineNumber} />` + currentEntry.lines[lineNumber];
+    const newSentences = line.match(/[^\.!\?]+[\.!\?]+/g);
+    let rest = '';
 
-  if (newSentences) {
-    // debug('New sentences', newSentences);
-    // We got one or more new sentences here
-    const sentences = [...newSentences];
+    if (newSentences) {
+      // debug('New sentences', newSentences);
+      // We got one or more new sentences here
+      const sentences = [...newSentences];
 
-    // Append any leftovers from previous ones
-    if (currentSentence) {
-      sentences[0] = currentSentence += (' ' + sentences[0]);
-      currentSentence = '';
-      // debug('Added leftover from previous sentence to first new sentence', sentences[0]);
+      // Append any leftovers from previous ones
+      if (currentSentence) {
+        sentences[0] = currentSentence += (' ' + sentences[0]);
+        currentSentence = '';
+        // debug('Added leftover from previous sentence to first new sentence', sentences[0]);
+      }
+      
+      for (let sentence of sentences) {
+        results.push({ sentence: sentence.trimStart(), ts: currentEntry.ts });
+        // debug('Added sentence', sentence, 'with timestamp', currentEntry.ts);
+        currentTimestamps = '';
+      }
+
+      rest = line.replace(newSentences.join(''), '');
+    } else {
+      // No finished sentences here
+      rest = line;
+      // debug('No new sentences, just add rest', line);
     }
-    
-    for (let sentence of sentences) {
-      results.push({ sentence, ts: [...currentTimestamps, currentEntry.ts] });
-      // debug('Added sentence', sentence, 'with timestamps', [...currentTimestamps, currentEntry.ts]);
-      currentTimestamps = [];
+
+    currentSentence = currentSentence ? (currentSentence + ' ' + rest) : rest;
+    if (rest && !currentTimestamp) {
+      currentTimestamp = currentEntry.ts;
+      // debug('Set currentSentence', currentSentence, 'with ts', currentEntry.ts);
     }
-
-    rest = currentEntry.total.replace(newSentences.join(''), '');
-  } else {
-    // No finished sentences here
-    rest = currentEntry.total;
-    // debug('No new sentences, just add rest', currentEntry.total);
-  }
-
-  currentSentence = currentSentence ? (currentSentence + ' ' + rest) : rest;
-  if (rest) {
-    currentTimestamps.push(currentEntry.ts);
-    // debug('Set currentSentence', currentSentence, 'with ts', currentEntry.ts);
   }
 }
 
 // In case the thing doesn't end in a sentence, push the rest
 if (currentSentence) {
-  results.push({ sentence: currentSentence, ts: [...currentTimestamps] });
+  results.push({ sentence: currentSentence, ts: currentTimestamp });
   // debug('Pushed remainder', currentSentence, 'with ts', [...currentTimestamps]);
 }
 
@@ -137,7 +139,7 @@ axios.default.post(DEEPL_API_URL + 'translate', params.toString())
 
       const targetEntries = allEntries.map((e) => {
         const trans = new Entry();
-        trans.lineNumber = e.lineNumber;
+        trans.number = e.number;
         trans.lines = [];
         trans.ts = e.ts;
         trans.characterCount = Math.ceil(e.characterCount * lengthFactor);
@@ -168,7 +170,7 @@ axios.default.post(DEEPL_API_URL + 'translate', params.toString())
             && (targetEntry.lines[amtOfLines - 1].length + word.length + 1 > maxLineLength
               || (!overflow && (targetEntry.lines[amtOfLines - 1].length + word.length + 1) >= (targetEntry.characterCount / amtOfLines)))) {
             // Entry full, go to the next one
-            debug('Entry', targetEntry.lineNumber, 'full, go to next one.');
+            debug('Entry', targetEntry.number, 'full, go to next one.');
             targetEntry = targetEntries.find(e => e.ts > targetEntry.ts);
             if (!overflow) {
               overflow = true;
@@ -180,24 +182,24 @@ axios.default.post(DEEPL_API_URL + 'translate', params.toString())
               endOfFile = true;
               targetEntry = targetEntries[targetEntries.length -1];
             } else {
-              debug('Entry', targetEntry.lineNumber, 'selected');
+              debug('Entry', targetEntry.number, 'selected');
               lastTs = targetEntry.ts; // Prevent going back to the previous one
             }
           }
 
           if (targetEntry.lines.length === 0) {
             // First word in this entry
-            debug('Adding first word', word, 'to', targetEntry.lineNumber);
+            debug('Adding first word', word, 'to', targetEntry.number);
             targetEntry.lines.push(word);
           } else if ((endOfFile || targetEntry.lines.length < amtOfLines)
             && targetEntry.lines[targetEntry.lines.length - 1].length + word.length + 1 > maxLineLength
             || (!overflow && (targetEntry.lines[targetEntry.lines.length - 1].length + word.length + 1) >= (targetEntry.characterCount / amtOfLines))) {
             // Line in entry full, but place for a new one... Add new line in this entry
-            debug('Adding first word', word, 'to new line of', targetEntry.lineNumber);
+            debug('Adding first word', word, 'to new line of', targetEntry.number);
             targetEntry.lines.push(word);
           } else {
             // No problem to add this word to the last line in this entry
-            debug('Adding word', word, 'to', targetEntry.lineNumber);
+            debug('Adding word', word, 'to', targetEntry.number);
             targetEntry.lines[targetEntry.lines.length - 1] += " " + word;
           }
         }
