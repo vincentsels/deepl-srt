@@ -3,8 +3,7 @@
   "version": "1.0.0",
   "description": "Translate srt files using the DeepL API",
   "main": "index.js",
-  "scripts": {
-  },
+  "scripts": {},
   "keywords": [
     "deepl",
     "srt",
