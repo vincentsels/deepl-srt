@@ -151,12 +151,13 @@ axios.default.post(DEEPL_API_URL + 'translate', params.toString())
       translations.forEach((trans, i) => {
         let ts = results[i].ts[0];
         if (lastTs > ts) {
-          debug('Already at', lastTs, 'continueing there, still in overflow mode');
+          debug('Already at', lastTs, 'continueing there');
           ts = lastTs;
-        }
-        if (overflow) {
-          debug('DISABLED overflow mode');
-          overflow = false;
+
+          if (!overflow) {
+            overflow = true;
+            debug('ENABLED overflow mode');
+          }
         }
 
         const words = trans.split(' ');
@@ -166,14 +167,14 @@ axios.default.post(DEEPL_API_URL + 'translate', params.toString())
         for (let word of words) {
           if (targetEntry.lines.length === amtOfLines
             && (targetEntry.lines[amtOfLines - 1].length + word.length + 1 > maxLineLength
-              || (!overflow && (targetEntry.lines[amtOfLines - 1].length + word.length + 1) >= (targetEntry.characterCount / amtOfLines)))) {
+              || (!overflow && (targetEntry.lines[amtOfLines - 1].length + word.length - 2) >= (targetEntry.characterCount / amtOfLines)))) {
             // Entry full, go to the next one
             debug('Entry', targetEntry.lineNumber, 'full, go to next one.');
-            targetEntry = targetEntries.find(e => e.ts > targetEntry.ts);
-            if (!overflow) {
-              overflow = true;
-              debug('ENABLED overflow mode');
+            if (overflow) {
+              debug('DISABLED overflow mode');
+              overflow = false;
             }
+            targetEntry = targetEntries.find(e => e.ts > targetEntry.ts);
             if (targetEntry === undefined) {
               // We're at the last one - just keep appending to it...
               debug('Entries full, appending to last one...');
@@ -191,7 +192,7 @@ axios.default.post(DEEPL_API_URL + 'translate', params.toString())
             targetEntry.lines.push(word);
           } else if ((endOfFile || targetEntry.lines.length < amtOfLines)
             && targetEntry.lines[targetEntry.lines.length - 1].length + word.length + 1 > maxLineLength
-            || (!overflow && (targetEntry.lines[targetEntry.lines.length - 1].length + word.length + 1) >= (targetEntry.characterCount / amtOfLines))) {
+            || (!overflow && (targetEntry.lines[targetEntry.lines.length - 1].length + word.length - 2) >= (targetEntry.characterCount / amtOfLines))) {
             // Line in entry full, but place for a new one... Add new line in this entry
             debug('Adding first word', word, 'to new line of', targetEntry.lineNumber);
             targetEntry.lines.push(word);
