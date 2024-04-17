@@ -28,7 +28,7 @@ const input = options.input || getSrtFileInFolder();
 let output = options.output;
 const source = options.source;
 const target = options.target || 'FR';
-const formality = options.formal ? 'more' : 'less';
+const formality = options.formal ? 'prefer_more' : 'prefer_less';
 const logDebug = options.debug;
 const displayUsageLimit = options.usagelimit;
 
